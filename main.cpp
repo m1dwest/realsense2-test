@@ -1,71 +1,16 @@
-#include <fstream>
 #include <iostream>
 #include <string>
 #include <vector>
 
-#include <opencv2/dnn.hpp>
 #include <opencv2/opencv.hpp>
 
 #include <librealsense2/rs.hpp>
 
-static const int YOLO_INPUT_W = 640;
-static const int YOLO_INPUT_H = 640;
-const cv::Scalar YOLO_LB_COLOR = cv::Scalar(114, 114, 114);
+#include "dnn_models/yolov5.h"
 
 static const float OBJ_THRESH = 0.25f;
 static const float SCORE_THRESH = 0.35f;  // obj * class
 static const float NMS_THRESH = 0.45f;
-
-struct Letterbox {
-    float aspect_ratio;
-    int image_y, image_x, image_w, image_h;
-
-    cv::Mat data;
-};
-
-Letterbox letterbox(const cv::Mat& src, int new_w, int new_h,
-                    const cv::Scalar& border_color) {
-    const int src_w = src.cols;
-    const int src_h = src.rows;
-    const float aspect_ratio = std::min(static_cast<float>(new_w) / src_w,
-                                        static_cast<float>(new_h) / src_h);
-
-    const int image_w = static_cast<int>(std::round(src_w * aspect_ratio));
-    const int image_h = static_cast<int>(std::round(src_h * aspect_ratio));
-    const int image_x = (new_w - image_w) / 2;
-    const int image_y = (new_h - image_h) / 2;
-
-    cv::Mat resized;
-    cv::resize(src, resized, cv::Size(image_w, image_w));
-
-    cv::Mat dst;
-    cv::copyMakeBorder(resized, dst, image_y, new_h - image_h - image_y,
-                       image_x, new_w - image_w - image_x, cv::BORDER_CONSTANT,
-                       YOLO_LB_COLOR);
-    return {aspect_ratio, image_y, image_x, image_w, image_h, dst};
-}
-
-std::vector<std::string> load_names(const std::string& path) {
-    auto ifs = std::ifstream{path};
-
-    std::vector<std::string> result;
-    std::string line;
-
-    while (std::getline(ifs, line)) {
-        if (!line.empty()) {
-            result.push_back(line);
-        }
-    }
-
-    return result;
-}
-
-cv::dnn::Net load_net(const std::string& path) {
-    auto net = cv::dnn::readNetFromONNX(path);
-    net.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
-    net.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
-    return net;
-}
 
 float get_depth_scale(const rs2::pipeline_profile& profile) {
     auto depth_scale = 0.f;
@@ -118,21 +63,13 @@ int main() {
     const std::string onnx_path = "yolov5s.onnx";
     const std::string names_path = "coco.names";
 
-    auto class_names = load_names(names_path);
-
-    if (class_names.empty()) {
-        std::cerr << "Failed to load class names\n";
-        return 1;
-    }
-
-    auto net = load_net(onnx_path);
+    auto model = std::make_shared<YOLOv5>(onnx_path, names_path);
 
     rs2::pipeline pipe;
     rs2::config cfg;
     cfg.enable_stream(RS2_STREAM_COLOR, 640, 480, RS2_FORMAT_BGR8, 30);
     cfg.enable_stream(RS2_STREAM_DEPTH, 640, 480, RS2_FORMAT_Z16, 30);
     auto profile = pipe.start(cfg);
-
     auto depth_scale = get_depth_scale(profile);
 
     while (true) {
@@ -153,15 +90,9 @@ int main() {
                     (void*)depth.get_data(), cv::Mat::AUTO_STEP);
 
         // PREPROCESS
-        const auto lb =
-            letterbox(color_bgr, YOLO_INPUT_W, YOLO_INPUT_H, YOLO_LB_COLOR);
-
-        cv::Mat blob = cv::dnn::blobFromImage(
-            lb.data, 1.0 / 255.0, cv::Size(YOLO_INPUT_W, YOLO_INPUT_H),
-            cv::Scalar(), /*swapRB*/ true, /*crop*/ false);
-
-        net.setInput(blob);
-        cv::Mat out = net.forward();  // shape: [1, N, 85] for YOLOv5
+        model->input(color_bgr);
+        model->forward();
+        cv::Mat out = model->outputs();
 
         // PARSE DETECTIONS
         const int rows = out.size[1];  // N
@@ -184,7 +115,8 @@ int main() {
             }
 
             // Get class with highest score
-            cv::Mat scores_row(1, (int)class_names.size(), CV_32F, data + 5);
+            cv::Mat scores_row(1, (int)model->class_names.size(), CV_32F,
+                               data + 5);
             cv::Point max_class_point;
             double max_class_score;
             cv::minMaxLoc(scores_row, nullptr, &max_class_score, nullptr,
@@ -198,10 +130,14 @@ int main() {
             float x = cx - w / 2.0f;
             float y = cy - h / 2.0f;
             // remove padding, then scale back
-            float x0 = (x - lb.image_x) / lb.aspect_ratio;
-            float y0 = (y - lb.image_y) / lb.aspect_ratio;
-            float x1 = (x + w - lb.image_x) / lb.aspect_ratio;
-            float y1 = (y + h - lb.image_y) / lb.aspect_ratio;
+            float x0 =
+                (x - model->letterbox.image_x) / model->letterbox.aspect_ratio;
+            float y0 =
+                (y - model->letterbox.image_y) / model->letterbox.aspect_ratio;
+            float x1 = (x + w - model->letterbox.image_x) /
+                       model->letterbox.aspect_ratio;
+            float y1 = (y + h - model->letterbox.image_y) /
+                       model->letterbox.aspect_ratio;
 
             int ix = std::max(0, (int)std::round(x0));
             int iy = std::max(0, (int)std::round(y0));
@@ -229,7 +165,7 @@ int main() {
                                         : cv::format("%.2fm", obj_depth_m);
 
             cv::rectangle(color_bgr, box, cv::Scalar(30, 119, 252), 2);
-            std::string label = class_names[cid] + " " + depth_str;
+            std::string label = model->class_names[cid] + " " + depth_str;
             int base;
             cv::Size tsize =
                 cv::getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.7, 2, &base);
@@ -241,7 +177,7 @@ int main() {
             cv::putText(color_bgr, label, cv::Point(box.x + 3, ty - 3),
                         cv::FONT_HERSHEY_SIMPLEX, 0.7,
                         cv::Scalar(255, 255, 255), 2);
-            std::cout << class_names[cid] << ": " << depth_str << "\n";
+            std::cout << model->class_names[cid] << ": " << depth_str << "\n";
         }
 
         cv::imshow("Color Image", color_bgr);
