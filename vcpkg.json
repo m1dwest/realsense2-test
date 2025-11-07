@@ -1,0 +1,6 @@
+{
+  "dependencies": [
+    "realsense2",
+    "opencv4"
+  ]
+}

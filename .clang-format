@@ -1,0 +1,13 @@
+---
+BasedOnStyle: Google
+IndentWidth: 4
+ObjCBlockIndentWidth: 4
+DerivePointerAlignment: false
+PointerAlignment: Left
+ReferenceAlignment: Left
+ColumnLimit: 80
+IncludeBlocks: Preserve
+QualifierAlignment: Left
+RequiresClausePosition: OwnLine
+IndentRequiresClause: false
+---
