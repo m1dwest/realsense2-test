@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(realsense2_test CXX)
+project(realsense2-test CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 
