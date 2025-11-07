@@ -6,18 +6,20 @@
 #include <opencv2/dnn.hpp>
 #include <opencv2/opencv.hpp>
 
-struct Letterbox {
-    float aspect_ratio;
-    int image_y, image_x, image_w, image_h;
-
-    cv::Mat data;
-};
-
 class DNNModel {
     cv::dnn::Net _net;
     std::optional<cv::Mat> _outputs;
 
    protected:
+    struct Letterbox {
+        float aspect_ratio;
+        int image_y, image_x, image_w, image_h;
+        int src_w, src_h;
+
+        cv::Mat data;
+    };
+    Letterbox _letterbox;
+
     Letterbox get_letterbox(const cv::Mat& src, int new_w, int new_h,
                             const cv::Scalar& border_color) const {
         const int src_w = src.cols;
@@ -37,7 +39,8 @@ class DNNModel {
         cv::copyMakeBorder(resized, dst, image_y, new_h - image_h - image_y,
                            image_x, new_w - image_w - image_x,
                            cv::BORDER_CONSTANT, border_color);
-        return {aspect_ratio, image_y, image_x, image_w, image_h, dst};
+        return {aspect_ratio, image_y, image_x, image_w,
+                image_h,      src_w,   src_h,   dst};
     }
 
     cv::dnn::Net load_model(const std::string& path) const {
@@ -70,10 +73,16 @@ class DNNModel {
     void input_preprocessed(cv::Mat blob) { _net.setInput(std::move(blob)); }
 
    public:
+    struct Object {
+        std::string class_name;
+        float score;
+        cv::Rect box;
+    };
+
     explicit DNNModel(const std::string& model_path,
                       const std::string& names_path) {
         _net = this->load_model(model_path);
-        class_names = this->load_names(names_path);
+        _class_names = this->load_names(names_path);
     }
 
     virtual void input(const cv::Mat& color_bgr) = 0;
@@ -82,7 +91,6 @@ class DNNModel {
     bool has_outputs() const { return _outputs.has_value(); }
     const cv::Mat& outputs() const { return _outputs.value(); }
 
-    // TODO
-    Letterbox letterbox;
-    std::vector<std::string> class_names;
+    virtual std::vector<Object> parse() const = 0;
+    std::vector<std::string> _class_names;
 };
