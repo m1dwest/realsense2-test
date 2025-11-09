@@ -54,7 +54,13 @@ inline float get_median_depth(const cv::Mat& depth_z16, const cv::Rect& roi,
 
 inline void render(const rs2::pipeline_profile& profile,
                    const std::vector<DNNModel::Object>& objects,
-                   const cv::Mat& color_bgr, const cv::Mat& depth_z16) {
+                   const cv::Mat& color_bgr, const cv::Mat& depth_z16,
+                   const cv::Mat& depth_rgb) {
+    static const auto surfaces =
+        std::vector<const cv::Mat*>{&color_bgr, &depth_rgb};
+    static std::size_t surface_index = 0;
+    static const auto* surface = surfaces[surface_index];
+
     auto depth_scale = get_depth_scale(profile);
 
     for (const auto& o : objects) {
@@ -63,22 +69,41 @@ inline void render(const rs2::pipeline_profile& profile,
         float obj_depth_m = get_median_depth(depth_z16, box, depth_scale);
         std::string depth_str =
             std::isnan(obj_depth_m) ? "n/a" : cv::format("%.2fm", obj_depth_m);
+        std::string score_str = cv::format("%.2f", o.score);
 
-        cv::rectangle(color_bgr, box, cv::Scalar(30, 119, 252), 2);
-        std::string label = o.class_name + " " + depth_str;
+        // std::optional<cv::Rect> clipped_bottle;
+        // if (o.class_name == "bottle") {
+        //     clipped_bottle =
+        //         box & cv::Rect(0, 0, color_bgr.cols, color_bgr.rows);
+        // }
+
+        cv::rectangle(*surface, box, cv::Scalar(30, 119, 252), 2);
+        std::string label = o.class_name + " " + depth_str + " " + score_str;
         int base;
         cv::Size tsize =
             cv::getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.7, 2, &base);
         int ty = std::max(0, box.y - 8);
-        cv::rectangle(color_bgr,
+        cv::rectangle(*surface,
                       cv::Rect(box.x, ty - tsize.height - 6, tsize.width + 6,
                                tsize.height + 6),
                       cv::Scalar(30, 119, 252), cv::FILLED);
-        cv::putText(color_bgr, label, cv::Point(box.x + 3, ty - 3),
+        // if (clipped_bottle.has_value()) {
+        //     cv::rectangle(drawing_surface, clipped_bottle.value(),
+        //                   cv::Scalar(255, 0, 0), cv::FILLED);
+        // }
+        cv::putText(*surface, label, cv::Point(box.x + 3, ty - 3),
                     cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(255, 255, 255),
                     2);
-        std::cout << o.class_name << ": " << depth_str << "\n";
+        // std::cout << o.class_name << ": " << depth_str << "\n";
     }
 
-    cv::imshow("Color Image", color_bgr);
+    cv::imshow("Color Image", *surfaces[surface_index]);
+    int k = cv::waitKey(1);
+    if (k == 27 || k == 'q') exit(0);
+    if (k == 'w') {
+        ++surface_index;
+        if (surface_index >= surfaces.size()) {
+            surface_index = 0;
+        }
+    }
 }
