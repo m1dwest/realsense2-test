@@ -3,7 +3,7 @@
 #include <librealsense2/rs.hpp>
 #include <opencv2/opencv.hpp>
 
-#include "dnn_models/dnn_model.h"
+#include "vision/detector.h"
 
 inline float get_depth_scale(const rs2::pipeline_profile& profile) {
     auto depth_scale = 0.f;
@@ -53,7 +53,7 @@ inline float get_median_depth(const cv::Mat& depth_z16, const cv::Rect& roi,
 }
 
 inline void render(const rs2::pipeline_profile& profile,
-                   const std::vector<DNNModel::Object>& objects,
+                   const std::vector<vision::DetectedObject>& detections,
                    const cv::Mat& color_bgr, const cv::Mat& depth_z16,
                    const cv::Mat& depth_rgb) {
     static const auto surfaces =
@@ -63,22 +63,22 @@ inline void render(const rs2::pipeline_profile& profile,
 
     auto depth_scale = get_depth_scale(profile);
 
-    for (const auto& o : objects) {
-        const cv::Rect& box = o.box;
+    for (const auto& d : detections) {
+        const cv::Rect& box = d.box;
 
         float obj_depth_m = get_median_depth(depth_z16, box, depth_scale);
         std::string depth_str =
             std::isnan(obj_depth_m) ? "n/a" : cv::format("%.2fm", obj_depth_m);
-        std::string score_str = cv::format("%.2f", o.score);
+        std::string score_str = cv::format("%.2f", d.score);
 
         // std::optional<cv::Rect> clipped_bottle;
-        // if (o.class_name == "bottle") {
+        // if (d.class_name == "bottle") {
         //     clipped_bottle =
         //         box & cv::Rect(0, 0, color_bgr.cols, color_bgr.rows);
         // }
 
         cv::rectangle(*surface, box, cv::Scalar(30, 119, 252), 2);
-        std::string label = o.class_name + " " + depth_str + " " + score_str;
+        std::string label = d.class_name + " " + depth_str + " " + score_str;
         int base;
         cv::Size tsize =
             cv::getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.7, 2, &base);
@@ -94,7 +94,7 @@ inline void render(const rs2::pipeline_profile& profile,
         cv::putText(*surface, label, cv::Point(box.x + 3, ty - 3),
                     cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(255, 255, 255),
                     2);
-        // std::cout << o.class_name << ": " << depth_str << "\n";
+        // std::cout << d.class_name << ": " << depth_str << "\n";
     }
 
     cv::imshow("Color Image", *surfaces[surface_index]);

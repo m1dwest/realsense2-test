@@ -4,14 +4,24 @@
 #include <librealsense2/rs.hpp>
 #include <opencv2/opencv.hpp>
 
-#include "dnn_models/yolov5.h"
 #include "render.h"
+#include "vision/detector.h"
+
+const float OBJ_THRESH = 0.25f;
+const float SCORE_THRESH = 0.35f;
+const float NMS_THRESH = 0.45f;
 
 int main() {
-    const std::string onnx_path = "yolov5s.onnx";
-    const std::string names_path = "coco.names";
-
-    auto model = std::make_shared<YOLOv5>(onnx_path, names_path);
+    auto detector_cfg =
+        vision::DetectorConfig{.model_kind = vision::ModelKind::YOLOv5,
+                               .model_path = "yolov5s.onnx",
+                               .names_path = "coco.names",
+                               .input_w = 640,
+                               .input_h = 640,
+                               .letterbox_color = cv::Scalar(114, 114, 114)};
+    auto detector = vision::Detector(detector_cfg);
+    const auto thresholds = vision::Thresholds{
+        .score = SCORE_THRESH, .nms = NMS_THRESH, .objectness = OBJ_THRESH};
 
     rs2::pipeline pipe;
     rs2::config cfg;
@@ -54,10 +64,10 @@ int main() {
             cv::Mat(color.get_height(), color.get_width(), CV_8UC3,
                     (void*)depth_colorized.get_data(), cv::Mat::AUTO_STEP);
 
-        model->input(color_bgr);
-        model->forward();
-        const auto objects = model->parse();
-        render(profile, color_bgr, depth_z16, depth_rgb);
+        detector.input(color_bgr);
+        detector.forward();
+        const auto detections = detector.parse(thresholds);
+        render(profile, detections, color_bgr, depth_z16, depth_rgb);
 
         print_fps();
     }
