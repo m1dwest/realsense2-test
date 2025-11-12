@@ -13,8 +13,8 @@ const float NMS_THRESH = 0.45f;
 
 int main() {
     auto detector_cfg =
-        vision::DetectorConfig{.model_kind = vision::ModelKind::YOLOv5,
-                               .model_path = "yolov5s.onnx",
+        vision::DetectorConfig{.model_kind = vision::ModelKind::YOLOv8,
+                               .model_path = "yolov11s.onnx",
                                .names_path = "coco.names",
                                .input_w = 640,
                                .input_h = 640,

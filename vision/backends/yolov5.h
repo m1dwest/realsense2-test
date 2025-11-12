@@ -13,7 +13,6 @@
 // [box_center_x, box_center_y, box_w, box_h, objectness, probability_scores...]
 namespace vision {
 
-// TODO cfg in ctor
 class YOLOv5Backend : public DetectorBackend {
    public:
     YOLOv5Backend(const std::string& model_path,
@@ -32,7 +31,6 @@ class YOLOv5Backend : public DetectorBackend {
         }
     }
 
-    // TODO thresth struct
     Detections parse(const cv::Mat& output,
                      Thresholds thresholds) const override {
         const int rows = output.size[1];  // predictions

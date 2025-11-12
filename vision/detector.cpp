@@ -4,6 +4,7 @@
 #include <ranges>
 
 #include "backends/yolov5.h"
+#include "backends/yolov8.h"
 #include "detail/letterbox.h"
 
 namespace vision {
@@ -12,6 +13,10 @@ Detector::Detector(DetectorConfig cfg) : _cfg(std::move(cfg)) {
     switch (_cfg.model_kind) {
         case ModelKind::YOLOv5:
             _backend = std::make_unique<YOLOv5Backend>(_cfg.model_path,
+                                                       _cfg.names_path);
+            return;
+        case ModelKind::YOLOv8:
+            _backend = std::make_unique<YOLOv8Backend>(_cfg.model_path,
                                                        _cfg.names_path);
             return;
         default:
