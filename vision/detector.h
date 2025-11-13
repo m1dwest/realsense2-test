@@ -20,10 +20,10 @@ class Detector {
     Detector(ModelRuntime&& runtime) : _runtime(std::move(runtime)) {};
 
     void input(const cv::Mat& bgr);
-
     void forward();
-
     [[nodiscard]] std::vector<Detection> parse(const Thresholds&) const;
+
+    bool is_nms_class_agnostic = true;
 
    private:
     [[nodiscard]] cv::Mat preprocess(const cv::Mat& bgr);

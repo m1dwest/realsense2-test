@@ -54,13 +54,7 @@ inline float get_median_depth(const cv::Mat& depth_z16, const cv::Rect& roi,
 
 inline void render(const rs2::pipeline_profile& profile,
                    const std::vector<vision::Detection>& detections,
-                   const cv::Mat& color_bgr, const cv::Mat& depth_z16,
-                   const cv::Mat& depth_rgb) {
-    static const auto surfaces =
-        std::vector<const cv::Mat*>{&color_bgr, &depth_rgb};
-    static std::size_t surface_index = 0;
-    static const auto* surface = surfaces[surface_index];
-
+                   const cv::Mat& color, const cv::Mat& depth_z16) {
     auto depth_scale = get_depth_scale(profile);
 
     for (const auto& d : detections) {
@@ -77,13 +71,13 @@ inline void render(const rs2::pipeline_profile& profile,
         //         box & cv::Rect(0, 0, color_bgr.cols, color_bgr.rows);
         // }
 
-        cv::rectangle(*surface, box, cv::Scalar(30, 119, 252), 2);
+        cv::rectangle(color, box, cv::Scalar(30, 119, 252), 2);
         std::string label = d.label + " " + depth_str + " " + score_str;
         int base;
         cv::Size tsize =
             cv::getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.7, 2, &base);
         int ty = std::max(0, box.y - 8);
-        cv::rectangle(*surface,
+        cv::rectangle(color,
                       cv::Rect(box.x, ty - tsize.height - 6, tsize.width + 6,
                                tsize.height + 6),
                       cv::Scalar(30, 119, 252), cv::FILLED);
@@ -91,19 +85,11 @@ inline void render(const rs2::pipeline_profile& profile,
         //     cv::rectangle(drawing_surface, clipped_bottle.value(),
         //                   cv::Scalar(255, 0, 0), cv::FILLED);
         // }
-        cv::putText(*surface, label, cv::Point(box.x + 3, ty - 3),
+        cv::putText(color, label, cv::Point(box.x + 3, ty - 3),
                     cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(255, 255, 255),
                     2);
         // std::cout << d.label << ": " << depth_str << "\n";
     }
 
-    cv::imshow("Color Image", *surfaces[surface_index]);
-    int k = cv::waitKey(1);
-    if (k == 27 || k == 'q') exit(0);
-    if (k == 'w') {
-        ++surface_index;
-        if (surface_index >= surfaces.size()) {
-            surface_index = 0;
-        }
-    }
+    cv::imshow("Color Image", color);
 }

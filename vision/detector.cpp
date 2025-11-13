@@ -53,12 +53,36 @@ cv::Mat Detector::preprocess(const cv::Mat& bgr) {
                                   /*crop*/ false);
 }
 
-// TODO non object agnostic
 std::vector<Detection> Detector::apply_nms_filter(
     const DetectionsRaw& detections, const Thresholds& thresholds) const {
     std::vector<int> filtered;
-    cv::dnn::NMSBoxes(detections.boxes, detections.scores, thresholds.score,
-                      thresholds.nms, filtered);
+    if (is_nms_class_agnostic) {
+        cv::dnn::NMSBoxes(detections.boxes, detections.scores, thresholds.score,
+                          thresholds.nms, filtered);
+    } else {
+        std::vector<int> tmp;
+        for (int c = 0; c < _runtime.labels.size(); ++c) {
+            tmp.clear();
+            std::vector<cv::Rect> boxes_by_class;
+            boxes_by_class.reserve(detections.boxes.size());
+            std::vector<float> scores_by_class;
+            scores_by_class.reserve(detections.scores.size());
+            std::vector<int> map_index;
+            map_index.reserve(detections.boxes.size());
+
+            for (auto i = 0; i < detections.class_ids.size(); ++i)
+                if (detections.class_ids[i] == c) {
+                    boxes_by_class.push_back(detections.boxes[i]);
+                    scores_by_class.push_back(detections.scores[i]);
+                    map_index.push_back(i);
+                }
+            cv::dnn::NMSBoxes(boxes_by_class, scores_by_class, thresholds.score,
+                              thresholds.nms, tmp);
+            for (int k : tmp) {
+                filtered.push_back(map_index[k]);
+            }
+        }
+    }
 
     const auto objects =
         filtered | std::ranges::views::transform([&, this](int index) {

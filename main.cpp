@@ -67,7 +67,23 @@ int main() {
         detector.input(color_bgr);
         detector.forward();
         const auto detections = detector.parse(thresholds);
-        render(profile, detections, color_bgr, depth_z16, depth_rgb);
+
+        static const auto surfaces =
+            std::vector<const cv::Mat*>{&color_bgr, &depth_rgb};
+        static std::size_t surface_index = 0;
+        render(profile, detections, *surfaces[surface_index], depth_z16);
+
+        int k = cv::waitKey(1);
+        if (k == 27 || k == 'q') exit(0);
+        if (k == 'w') {
+            ++surface_index;
+            if (surface_index >= surfaces.size()) {
+                surface_index = 0;
+            }
+        }
+        if (k == 'c') {
+            detector.is_nms_class_agnostic = !detector.is_nms_class_agnostic;
+        }
 
         print_fps();
     }
