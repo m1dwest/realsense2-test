@@ -1,74 +1,16 @@
 #include "detector.h"
 
-#include <fstream>
+#include <iostream>
 #include <ranges>
-
-#include "backends/yolov5.h"
-#include "backends/yolov8.h"
-#include "detail/letterbox.h"
 
 namespace vision {
 
-Detector::Detector(DetectorConfig cfg) : _cfg(std::move(cfg)) {
-    switch (_cfg.model_kind) {
-        case ModelKind::YOLOv5:
-            _backend = std::make_unique<YOLOv5Backend>(_cfg.model_path,
-                                                       _cfg.names_path);
-            return;
-        case ModelKind::YOLOv8:
-            _backend = std::make_unique<YOLOv8Backend>(_cfg.model_path,
-                                                       _cfg.names_path);
-            return;
-        default:
-            throw std::runtime_error("Unsupported ModelKind");
-    }
-}
-
-cv::Mat Detector::preprocess(const cv::Mat& bgr) {
-    _letterbox =
-        img_to_letterbox(bgr, _cfg.input_w, _cfg.input_h, _cfg.letterbox_color);
-
-    return cv::dnn::blobFromImage(
-        _letterbox.data, 1.0 / 255.0, cv::Size(_cfg.input_w, _cfg.input_h),
-        cv::Scalar(), /*swapRB*/ true, /*crop*/ false);
-}
-
-// TODO non object agnostic
-std::vector<DetectedObject> Detector::apply_nms_filter(
-    const Detections& detections, const Thresholds& thresholds) const {
-    std::vector<int> filtered;
-    cv::dnn::NMSBoxes(detections.boxes, detections.scores, thresholds.score,
-                      thresholds.nms, filtered);
-
-    const auto objects =
-        filtered | std::ranges::views::transform([&, this](int index) {
-            return DetectedObject{
-                .class_name = name_by_class_id(detections.ids[index]),
-                .score = detections.scores[index],
-                .box = box_from_letterbox(detections.boxes[index], _letterbox)
-                           .value()};
-        });
-    // TODO filter letterbox optional
-    return {std::begin(objects), std::end(objects)};
-}
-
-std::string Detector::name_by_class_id(std::size_t id) const {
-    const auto& names = _backend->class_names();
-    if (id >= names.size()) {
-        std::cerr << "Wrond id " << id << " for class\n";
-        return {};
-    } else {
-        return names[id];
-    }
-}
-
 void Detector::input(const cv::Mat& bgr) {
     auto blob = this->preprocess(bgr);
-    _backend->input(std::move(blob));
+    _runtime.net.setInput(std::move(blob));
 }
 
 void Detector::forward() {
-    _outputs = _backend->forward();
     // const auto names = _net.getUnconnectedOutLayersNames();
     // std::vector<cv::Mat> outs;
     // _net.forward(outs, names);
@@ -84,9 +26,10 @@ void Detector::forward() {
     // //               << ")\n";
     // // }
     // _outputs = outs.at(0);
+    _outputs = _runtime.net.forward();
 }
 
-std::vector<DetectedObject> Detector::parse(
+[[nodiscard]] std::vector<Detection> Detector::parse(
     const Thresholds& thresholds) const {
     if (!_outputs.has_value()) {
         std::cerr << "No outputs from model was found to parse\n";
@@ -94,10 +37,48 @@ std::vector<DetectedObject> Detector::parse(
     }
 
     const auto& data = _outputs.value();
-    _backend->validate(data);
+    _runtime.parser->validate(data);
 
-    const auto detections = _backend->parse(data, thresholds);
+    const auto detections = _runtime.parser->parse(data, thresholds);
     return apply_nms_filter(detections, thresholds);
+}
+
+cv::Mat Detector::preprocess(const cv::Mat& bgr) {
+    _letterbox = img_to_letterbox(bgr, _runtime.input_w, _runtime.input_h,
+                                  _runtime.letterbox_color);
+
+    return cv::dnn::blobFromImage(_letterbox.data, 1.0 / 255.0,
+                                  cv::Size(_runtime.input_w, _runtime.input_h),
+                                  cv::Scalar(), /*swapRB*/ true,
+                                  /*crop*/ false);
+}
+
+// TODO non object agnostic
+std::vector<Detection> Detector::apply_nms_filter(
+    const DetectionsRaw& detections, const Thresholds& thresholds) const {
+    std::vector<int> filtered;
+    cv::dnn::NMSBoxes(detections.boxes, detections.scores, thresholds.score,
+                      thresholds.nms, filtered);
+
+    const auto objects =
+        filtered | std::ranges::views::transform([&, this](int index) {
+            return Detection{
+                .label = label_by_id(detections.class_ids[index]),
+                .score = detections.scores[index],
+                .box = box_from_letterbox(detections.boxes[index], _letterbox)
+                           .value()};
+        });
+    // TODO filter letterbox optional
+    return {std::begin(objects), std::end(objects)};
+}
+
+std::string Detector::label_by_id(std::size_t id) const {
+    if (id >= _runtime.labels.size()) {
+        std::cerr << "Wrong id " << id << " for class\n";
+        return {};
+    } else {
+        return _runtime.labels[id];
+    }
 }
 
 }  // namespace vision

@@ -1,31 +1,40 @@
 #pragma once
 
-#include <memory>
-#include <string>
-
-#include "backends/backend.h"
 #include "detail/letterbox.h"
-#include "types.h"
+#include "parsers/parser.h"
 
 namespace vision {
 
+struct ModelRuntime {
+    cv::dnn::Net net;
+    std::vector<std::string> labels;
+    std::unique_ptr<Parser> parser;
+
+    int input_w;
+    int input_h;
+    cv::Scalar letterbox_color;
+};
+
 class Detector {
-    Letterbox _letterbox;
-    DetectorConfig _cfg;
-    std::unique_ptr<DetectorBackend> _backend;
-    std::optional<cv::Mat> _outputs;
-
-    [[nodiscard]] cv::Mat preprocess(const cv::Mat& bgr);
-    std::vector<DetectedObject> apply_nms_filter(const Detections&,
-                                                 const Thresholds&) const;
-    std::string name_by_class_id(std::size_t id) const;
-
    public:
-    Detector(DetectorConfig cfg);
+    Detector(ModelRuntime&& runtime) : _runtime(std::move(runtime)) {};
 
     void input(const cv::Mat& bgr);
+
     void forward();
-    std::vector<DetectedObject> parse(const Thresholds&) const;
+
+    [[nodiscard]] std::vector<Detection> parse(const Thresholds&) const;
+
+   private:
+    [[nodiscard]] cv::Mat preprocess(const cv::Mat& bgr);
+    std::vector<Detection> apply_nms_filter(const DetectionsRaw&,
+                                            const Thresholds&) const;
+    std::string label_by_id(std::size_t id) const;
+
+    ModelRuntime _runtime;
+
+    Letterbox _letterbox;
+    std::optional<cv::Mat> _outputs;
 };
 
 }  // namespace vision

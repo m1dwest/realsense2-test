@@ -6,20 +6,20 @@
 
 #include "render.h"
 #include "vision/detector.h"
+#include "vision/factory.h"
 
 const float OBJ_THRESH = 0.25f;
 const float SCORE_THRESH = 0.35f;
 const float NMS_THRESH = 0.45f;
 
 int main() {
-    auto detector_cfg =
-        vision::DetectorConfig{.model_kind = vision::ModelKind::YOLOv8,
-                               .model_path = "yolov11s.onnx",
-                               .names_path = "coco.names",
-                               .input_w = 640,
-                               .input_h = 640,
-                               .letterbox_color = cv::Scalar(114, 114, 114)};
-    auto detector = vision::Detector(detector_cfg);
+    auto runtime =
+        // vision::make_runtime(vision::ModelType::YOLOv5, "yolov5s.onnx",
+        //                      "coco.names", 640, 640, cv::Scalar(114, 114,
+        //                      114));
+        vision::make_runtime(vision::ModelType::YOLOv8, "yolov11s.onnx",
+                             "coco.names", 640, 640, cv::Scalar(114, 114, 114));
+    auto detector = vision::Detector(std::move(runtime));
     const auto thresholds = vision::Thresholds{
         .score = SCORE_THRESH, .nms = NMS_THRESH, .objectness = OBJ_THRESH};
 
