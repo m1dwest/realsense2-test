@@ -37,20 +37,26 @@ std::vector<std::string> load_labels(const std::string& path) {
 ModelRuntime make_runtime(ModelType model_type, const std::string& model_path,
                           const std::string& labels_path, int input_w,
                           int input_h, cv::Scalar letterbox_color) {
-    const auto create_parser = [](auto type) -> std::unique_ptr<Parser> {
+    const auto create_parser = [&](auto type,
+                                   auto class_num) -> std::unique_ptr<Parser> {
         switch (type) {
             case ModelType::YOLOv5:
-                return std::make_unique<YOLOv5Parser>();
+                return std::make_unique<YOLOv5Parser>(class_num, input_w,
+                                                      input_h);
             case ModelType::YOLOv8:
-                return std::make_unique<YOLOv8Parser>();
+                return std::make_unique<YOLOv8Parser>(class_num, input_w,
+                                                      input_h);
             default:
                 throw std::runtime_error("Unknown model type");
         }
     };
 
+    auto labels = load_labels(labels_path);
+    auto parser = create_parser(model_type, labels.size());
+
     return ModelRuntime{.net = load_model(model_path),
                         .labels = load_labels(labels_path),
-                        .parser = create_parser(model_type),
+                        .parser = std::move(parser),
                         .input_w = input_w,
                         .input_h = input_h,
                         .letterbox_color = letterbox_color};

@@ -14,11 +14,12 @@ const float NMS_THRESH = 0.45f;
 
 int main() {
     auto runtime =
-        // vision::make_runtime(vision::ModelType::YOLOv5, "yolov5s.onnx",
-        //                      "coco.names", 640, 640, cv::Scalar(114, 114,
-        //                      114));
         vision::make_runtime(vision::ModelType::YOLOv8, "yolov11s.onnx",
                              "coco.names", 640, 640, cv::Scalar(114, 114, 114));
+    // vision::make_runtime(vision::ModelType::YOLOv5, "yolov5s.onnx",
+    //                      "coco.names", 640, 640, cv::Scalar(114, 114, 114));
+    // vision::make_runtime(vision::ModelType::YOLOv8, "RPS.onnx", "RPS.names",
+    //                      640, 640, cv::Scalar(114, 114, 114));
     auto detector = vision::Detector(std::move(runtime));
     const auto thresholds = vision::Thresholds{
         .score = SCORE_THRESH, .nms = NMS_THRESH, .objectness = OBJ_THRESH};

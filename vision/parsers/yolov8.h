@@ -6,20 +6,21 @@ namespace vision {
 
 class YOLOv8Parser : public Parser {
    public:
+    using Parser::Parser;
+
     DetectionsRaw parse(const cv::Mat& output,
                         const Thresholds& thresholds) const override {
-        // validate(out);
+        validate(output);
+
         const float* p = output.ptr<float>(0, 4);  // first class channel
         float mn = +1e9f, mx = -1e9f;
         for (int i = 0; i < 100; ++i) {
             mn = std::min(mn, p[i]);
             mx = std::max(mx, p[i]);
         }
-        std::cout << "class0 sample range: " << mn << " .. " << mx << "\n";
 
-        const int C = output.size[1];  // 84
+        const int C = output.size[1];  // 84 // 7 for RPS
         const int N = output.size[2];  // 8400
-        std::cout << "C: " << C << " \nN: " << N << "\n";
         const int Nc = C - 4;
         const auto* data = reinterpret_cast<const float*>(output.data);
 
@@ -60,34 +61,32 @@ class YOLOv8Parser : public Parser {
     }
 
     void validate(const cv::Mat& output) const override {
-        // std::cout << output.size[1] << " " << output.size[2] << "\n";
-        // const auto dimensions = output.size[2];
-        // if (dimensions != ATTRIBUTE_N) {
-        //     throw std::runtime_error{
-        //         "Unexpected output dimensions for YOLOv5: " +
-        //         std::to_string(dimensions) + " (expected " +
-        //         std::to_string(ATTRIBUTE_N) + ")"};
-        // }
+        const auto actual_features = output.size[1];
+        const auto actual_locations = output.size[2];
+        const auto expected_features = class_num + 4;  // 4 is box points
+        const auto expected_locations = (input_w / 8) * (input_h / 8) +
+                                        (input_w / 16) * (input_h / 16) +
+                                        (input_w / 32) * (input_h / 32);
+
+        if (actual_features != expected_features) {
+            throw std::runtime_error{
+                "Unexpected features quantity for YOLOv8: " +
+                std::to_string(actual_features) + " (expected " +
+                std::to_string(expected_features) + ")"};
+        }
+
+        if (actual_locations != expected_locations) {
+            throw std::runtime_error{
+                "Unexpected locations quantity for YOLOv8: " +
+                std::to_string(actual_locations) + " (expected " +
+                std::to_string(expected_locations) + ")"};
+        }
     }
 
    private:
-    struct Candidate {
-        cv::Point class_id;
-        double score;
-    };
-
-    Candidate get_best_candidate(float* data, float objectness) const {
-        // TODO get class n
-        const int CLASS_N = 80;
-        cv::Mat probs(1, CLASS_N, CV_32F, data);
-
-        cv::Point max_class_id;
-        double max_class_prob;
-        cv::minMaxLoc(probs, nullptr, &max_class_prob, nullptr, &max_class_id);
-        return {.class_id = max_class_id, .score = objectness * max_class_prob};
-    }
-
-    const int ATTRIBUTE_N = 85;
+    // downsampled grid, strides 8, 16, 23
+    // (640 / 8) * (640 / 8) + (640 / 16 * 640 / 16) + (640 / 32 * 640 / 32)
+    const int LOCATIONS_N = 8400;
 };
 
 }  // namespace vision

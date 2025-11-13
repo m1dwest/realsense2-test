@@ -6,6 +6,8 @@ namespace vision {
 
 class YOLOv5Parser : public Parser {
    public:
+    using Parser::Parser;
+
     DetectionsRaw parse(const cv::Mat& output,
                         const Thresholds& thresholds) const override {
         const int rows = output.size[1];  // predictions
@@ -35,12 +37,15 @@ class YOLOv5Parser : public Parser {
     }
 
     void validate(const cv::Mat& output) const override {
-        const auto dimensions = output.size[2];
-        if (dimensions != ATTRIBUTE_N) {
+        const auto actual_dims = output.size[2];
+        const auto expected_dims =
+            class_num + 4 + 1;  // 4 is box points, 1 is objectness
+
+        if (actual_dims != expected_dims) {
             throw std::runtime_error{
                 "Unexpected output dimensions for YOLOv5: " +
-                std::to_string(dimensions) + " (expected " +
-                std::to_string(ATTRIBUTE_N) + ")"};
+                std::to_string(actual_dims) + " (expected " +
+                std::to_string(expected_dims) + ")"};
         }
     }
 
@@ -51,17 +56,13 @@ class YOLOv5Parser : public Parser {
     };
 
     Candidate get_best_candidate(float* data, float objectness) const {
-        // TODO get class n
-        const int CLASS_N = 80;
-        cv::Mat probs(1, CLASS_N, CV_32F, data);
+        cv::Mat probs(1, class_num, CV_32F, data);
 
         cv::Point max_class_id;
         double max_class_prob;
         cv::minMaxLoc(probs, nullptr, &max_class_prob, nullptr, &max_class_id);
         return {.class_id = max_class_id, .score = objectness * max_class_prob};
     }
-
-    const int ATTRIBUTE_N = 85;
 };
 
 }  // namespace vision

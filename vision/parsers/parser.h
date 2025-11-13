@@ -27,11 +27,16 @@ struct Thresholds {
 class Parser {
    public:
     virtual ~Parser() = default;
+    Parser(std::size_t class_num, int input_w, int input_h)
+        : class_num(class_num), input_w(input_w), input_h(input_h) {}
 
     virtual DetectionsRaw parse(const cv::Mat&, const Thresholds&) const = 0;
     virtual void validate(const cv::Mat&) const = 0;
 
-   private:
+   protected:
+    std::size_t class_num = 0;
+    int input_w = 0;
+    int input_h = 0;
 };
 
 }  // namespace vision
