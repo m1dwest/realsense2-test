@@ -1,4 +1,5 @@
 #include <chrono>
+#include <numeric>
 #include <string>
 
 #include <plog/Formatters/TxtFormatter.h>
@@ -15,6 +16,25 @@
 const float OBJ_THRESH = 0.25f;
 const float SCORE_THRESH = 0.35f;
 const float NMS_THRESH = 0.45f;
+
+float get_depth_scale(const rs2::pipeline_profile& profile) {
+    auto depth_scale = 0.f;
+
+    const auto sensors = profile.get_device().query_sensors();
+    for (const auto& s : sensors) {
+        if (auto ds = s.as<rs2::depth_sensor>()) {
+            depth_scale = ds.get_depth_scale();
+            break;
+        }
+    }
+
+    if (depth_scale <= 0.f) {
+        LOG_WARNING << "Failed to get depth scale; defaulting to 0.001\n";
+        depth_scale = 0.001f;
+    }
+
+    return depth_scale;
+}
 
 int main() {
     plog::init<plog::TxtFormatter>(plog::debug, plog::streamStdOut);
@@ -46,6 +66,7 @@ int main() {
     cfg.enable_stream(RS2_STREAM_COLOR, 640, 480, RS2_FORMAT_BGR8, 60);
     cfg.enable_stream(RS2_STREAM_DEPTH, 640, 480, RS2_FORMAT_Z16, 60);
     auto profile = pipe.start(cfg);
+    const auto depth_scale = get_depth_scale(profile);
     rs2::align align_to_color(RS2_STREAM_COLOR);
     rs2::colorizer colorize;
 
@@ -64,6 +85,9 @@ int main() {
     app.setVSync(true);
 
     rs2::frameset frames = pipe.wait_for_frames();
+
+    std::vector<vision::Detection> detections;
+    detections.reserve(32);
     while (!app.should_close()) {
         pipe.poll_for_frames(&frames);
 
@@ -85,14 +109,18 @@ int main() {
             cv::Mat(color.get_height(), color.get_width(), CV_8UC3,
                     (void*)depth_colorized.get_data(), cv::Mat::AUTO_STEP);
 
-        // detector.input(color_bgr);
-        // detector.forward();
-        const auto detections = detector.parse(thresholds);
+        if (app.is_inference_enabled()) {
+            detector.input(color_bgr);
+            detector.forward();
+            detections = detector.parse(thresholds);
+        } else {
+            detections.clear();
+        }
 
         static const auto surfaces =
             std::vector<const cv::Mat*>{&color_bgr, &depth_rgb};
         static std::size_t surface_index = 0;
-        // render(profile, detections, *surfaces[surface_index], depth_z16);
+        render(depth_scale, detections, *surfaces[surface_index], depth_z16);
 
         // int k = cv::waitKey(1);
         // if (k == 27 || k == 'q') exit(0);
@@ -109,12 +137,19 @@ int main() {
         if (!color_bgr.isContinuous()) {
             color_bgr = color_bgr.clone();
         }
-        app.update_video_stream(color_bgr.data);
+        app.update_video_stream(color_bgr.data, depth_rgb.data);
+        if (const auto depth_picker = app.depth_picker();
+            depth_picker.has_value()) {
+            const auto distance =
+                depth.get_distance(depth_picker->x, depth_picker->y);
+            LOG_INFO << distance;
+            app.update_depth_picker(distance);
+        }
         app.compose_frame();
         app.render();
 
         app.input();
-        print_fps();
+        // print_fps();
     }
 
     pipe.stop();

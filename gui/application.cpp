@@ -242,6 +242,8 @@ GLuint create_texture(int width, int height) {
 
 namespace gui {
 
+Application::Application() { _streams = {"color", "depth"}; }
+
 Application::~Application() {
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
@@ -293,26 +295,49 @@ void Application::create_video_stream(int width, int height) {
                                 .texture = create_texture(width, height)};
 }
 
-void Application::update_video_stream(unsigned char* data) const {
+void Application::update_video_stream(unsigned char* color_bgr,
+                                      unsigned char* depth_rgb) const {
     glBindTexture(GL_TEXTURE_2D, _video_stream->texture);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);  // just to be safe
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+    unsigned char* current_data;
+    GLenum current_format;
+    if (_current_stream_index == 0) {
+        current_data = color_bgr;
+        current_format = GL_BGR;
+    } else {
+        current_data = depth_rgb;
+        current_format = GL_RGB;
+    }
 
     glTexSubImage2D(GL_TEXTURE_2D,
                     0,     // mip level
                     0, 0,  // xoffset, yoffset
                     _video_stream->width, _video_stream->height,
-                    GL_BGR,  // format of incoming data
-                    GL_UNSIGNED_BYTE, data);
-
+                    current_format,  // format of incoming data
+                    GL_UNSIGNED_BYTE, current_data);
     glBindTexture(GL_TEXTURE_2D, 0);
 }
 
-void Application::compose_frame() const {
+std::optional<ImVec2> Application::depth_picker() const {
+    return _video_stream.has_value() ? _video_stream->mouse_click
+                                     : std::nullopt;
+}
+
+void Application::update_depth_picker(float depth) { _depth_picker = depth; }
+
+bool Application::is_inference_enabled() const { return _is_inference_enabled; }
+
+void Application::compose_frame() {
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
-    // ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.f, 0.f));
+    auto& io = ImGui::GetIO();
+
+    const auto viewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(ImVec2(0.f, 0.f));
+
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.f, 0.f));
     ImGui::Begin("RGB viewer", NULL,
                  ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
@@ -320,29 +345,83 @@ void Application::compose_frame() const {
                      ImGuiWindowFlags_AlwaysAutoResize);
 
     if (_video_stream.has_value()) {
-        // Size of the image in the ImGui window
-        ImVec2 imgSize((float)_video_stream->width,
-                       (float)_video_stream->height);
+        static bool mouse_click_recorded = false;
+        const auto content_pos = ImGui::GetCursorScreenPos();
+        const auto mouse_pos = ImGui::GetMousePos();
+        const auto relative_pos =
+            ImVec2(mouse_pos.x - content_pos.x, mouse_pos.y - content_pos.y);
+        if (relative_pos.x > 0 && relative_pos.x < _video_stream->width &&
+            relative_pos.y > 0 && relative_pos.y < _video_stream->height) {
+            _video_stream->mouse_pos = relative_pos;
+
+            if (ImGui::IsMouseDown(0) && !mouse_click_recorded) {
+                _video_stream->mouse_click = relative_pos;
+                mouse_click_recorded = true;
+            }
+            if (ImGui::IsMouseReleased(0)) {
+                mouse_click_recorded = false;
+            }
+        } else {
+            _video_stream->mouse_pos = std::nullopt;
+        }
+
+        ImVec2 imgSize(static_cast<float>(_video_stream->width),
+                       static_cast<float>(_video_stream->height));
 
         // Many OpenGL backends expect ImTextureID to be the GLuint cast like
         // this:
         ImTextureID texId = (ImTextureID)(intptr_t)_video_stream->texture;
-
-        // Normal (unflipped) UVs:
         ImVec2 uv0(0.0f, 0.0f);
         ImVec2 uv1(1.0f, 1.0f);
-
-        // If your image appears upside-down, flip Y:
-        // ImVec2 uv0(0.0f, 1.0f);
-        // ImVec2 uv1(1.0f, 0.0f);
-
         ImGui::Image(texId, imgSize, uv0, uv1);
+
     } else {
         LOG_ERROR << "Video stream is not initialized";
     }
 
     ImGui::End();
     ImGui::PopStyleVar();
+
+    ImGui::Begin("Info");
+    auto fps = io.Framerate;
+    ImGui::Text("FPS: %.1f", fps);
+
+    if (_video_stream.has_value()) {
+        if (_video_stream->mouse_pos.has_value()) {
+            ImGui::Text("Mouse pos: (%g, %g)",
+                        static_cast<double>(_video_stream->mouse_pos->x),
+                        static_cast<double>(_video_stream->mouse_pos->y));
+        }
+        if (_video_stream->mouse_click.has_value()) {
+            ImGui::Text("Mouse click: (%g, %g)",
+                        static_cast<double>(_video_stream->mouse_click->x),
+                        static_cast<double>(_video_stream->mouse_click->y));
+        }
+        if (_depth_picker.has_value()) {
+            ImGui::Text("Depth: %f", _depth_picker.value());
+        }
+    }
+    ImGui::End();
+
+    if (ImGui::Begin("Control")) {
+        if (ImGui::BeginCombo("Stream", _streams[_current_stream_index])) {
+            for (int n = 0; n < _streams.size(); ++n) {
+                const bool is_selected = (_current_stream_index == n);
+                if (ImGui::Selectable(_streams[n], is_selected)) {
+                    _current_stream_index = n;
+                }
+
+                if (is_selected) {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+            ImGui::EndCombo();
+        }
+
+        ImGui::Checkbox("Enable inference", &_is_inference_enabled);
+
+        ImGui::End();
+    }
 }
 
 bool Application::should_close() const {

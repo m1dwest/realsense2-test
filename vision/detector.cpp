@@ -3,6 +3,8 @@
 #include <iostream>
 #include <ranges>
 
+#include <plog/Log.h>
+
 namespace vision {
 
 void Detector::input(const cv::Mat& bgr) {
@@ -32,7 +34,7 @@ void Detector::forward() {
 [[nodiscard]] std::vector<Detection> Detector::parse(
     const Thresholds& thresholds) const {
     if (!_outputs.has_value()) {
-        std::cerr << "No outputs from model was found to parse\n";
+        LOG_ERROR << "No outputs from model was found to parse\n";
         return {};
     }
 

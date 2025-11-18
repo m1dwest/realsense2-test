@@ -5,25 +5,6 @@
 
 #include "vision/detector.h"
 
-inline float get_depth_scale(const rs2::pipeline_profile& profile) {
-    auto depth_scale = 0.f;
-
-    const auto sensors = profile.get_device().query_sensors();
-    for (const auto& s : sensors) {
-        if (auto ds = s.as<rs2::depth_sensor>()) {
-            depth_scale = ds.get_depth_scale();
-            break;
-        }
-    }
-
-    if (depth_scale <= 0.f) {
-        std::cerr << "Failed to get depth scale; defaulting to 0.001\n";
-        depth_scale = 0.001f;
-    }
-
-    return depth_scale;
-}
-
 inline float get_median_depth(const cv::Mat& depth_z16, const cv::Rect& roi,
                               float depth_scale) {
     cv::Rect clipped = roi & cv::Rect(0, 0, depth_z16.cols, depth_z16.rows);
@@ -52,11 +33,9 @@ inline float get_median_depth(const cv::Mat& depth_z16, const cv::Rect& roi,
     return vals[mid] * depth_scale;
 }
 
-inline void render(const rs2::pipeline_profile& profile,
+inline void render(float depth_scale,
                    const std::vector<vision::Detection>& detections,
                    const cv::Mat& color, const cv::Mat& depth_z16) {
-    auto depth_scale = get_depth_scale(profile);
-
     for (const auto& d : detections) {
         const cv::Rect& box = d.box;
 
@@ -91,5 +70,5 @@ inline void render(const rs2::pipeline_profile& profile,
         // std::cout << d.label << ": " << depth_str << "\n";
     }
 
-    cv::imshow("Color Image", color);
+    // cv::imshow("Color Image", color);
 }
