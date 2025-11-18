@@ -1,6 +1,13 @@
 {
   "dependencies": [
     "realsense2",
-    "opencv4"
+    "opencv4",
+    {
+        "name": "imgui",
+        "features": ["glfw-binding", "opengl3-binding"]
+    },
+    "glfw3",
+    "glad",
+    "plog"
   ]
 }
