@@ -163,7 +163,8 @@ void init_glad() {
 }
 
 gui::Application::Window create_window(int width, int height,
-                                       std::string&& title) {
+                                       std::string&& title,
+                                       bool is_vsync_enabled) {
     gui::Application::Window window;
     // const GLFWvidmode *mode = glfwGetVideoMode(monitor);
     // glfwWindowHint(GLFW_MAXIMIZED, GLFW_TRUE);
@@ -187,7 +188,7 @@ gui::Application::Window create_window(int width, int height,
 
     glfwSetFramebufferSizeCallback(window.window, framebuffer_size_callback);
     glfwMakeContextCurrent(window.window);
-    glfwSwapInterval(1);
+    glfwSwapInterval(static_cast<int>(is_vsync_enabled));
 
     LOG_INFO << "OpenGL from GLFW "
              << glfwGetWindowAttrib(window.window, GLFW_CONTEXT_VERSION_MAJOR)
@@ -263,7 +264,8 @@ bool Application::init(int width, int height, std::string title) {
         init_glfw();
         LOG_INFO << "GLFW initialized";
 
-        _window = create_window(width, height, std::move(title));
+        _window =
+            create_window(width, height, std::move(title), _is_vsync_enabled);
         LOG_INFO << "GLFW window created";
 
         init_glad();
@@ -299,7 +301,7 @@ void Application::update_video_stream(unsigned char* data) const {
                     0,     // mip level
                     0, 0,  // xoffset, yoffset
                     _video_stream->width, _video_stream->height,
-                    GL_RGB,  // format of incoming data
+                    GL_BGR,  // format of incoming data
                     GL_UNSIGNED_BYTE, data);
 
     glBindTexture(GL_TEXTURE_2D, 0);
@@ -310,9 +312,12 @@ void Application::compose_frame() const {
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
+    // ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.f, 0.f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.f, 0.f));
     ImGui::Begin("RGB viewer", NULL,
                  ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
-                     ImGuiWindowFlags_NoCollapse);
+                     ImGuiWindowFlags_NoCollapse |
+                     ImGuiWindowFlags_AlwaysAutoResize);
 
     if (_video_stream.has_value()) {
         // Size of the image in the ImGui window
@@ -337,6 +342,7 @@ void Application::compose_frame() const {
     }
 
     ImGui::End();
+    ImGui::PopStyleVar();
 }
 
 bool Application::should_close() const {
@@ -355,5 +361,10 @@ void Application::render() const {
 }
 
 void Application::input() const { glfwPollEvents(); }
+
+void Application::setVSync(bool flag) {
+    _is_vsync_enabled = flag;
+    glfwSwapInterval(static_cast<int>(flag));
+}
 
 }  // namespace gui

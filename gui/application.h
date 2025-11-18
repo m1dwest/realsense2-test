@@ -36,7 +36,11 @@ class Application {
     void render() const;
     void input() const;
 
+    void setVSync(bool flag);
+
    private:
+    bool _is_vsync_enabled = true;
+
     std::optional<Window> _window;
     std::optional<VideoStream> _video_stream;
 };
