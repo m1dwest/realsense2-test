@@ -86,16 +86,21 @@ std::vector<Detection> Detector::apply_nms_filter(
         }
     }
 
-    const auto objects =
-        filtered | std::ranges::views::transform([&, this](int index) {
-            return Detection{
-                .label = label_by_id(detections.class_ids[index]),
-                .score = detections.scores[index],
-                .box = box_from_letterbox(detections.boxes[index], _letterbox)
-                           .value()};
-        });
-    // TODO filter letterbox optional
-    return {std::begin(objects), std::end(objects)};
+    std::vector<Detection> result;
+    for (auto i : filtered) {
+        auto label = label_by_id(detections.class_ids[i]);
+        auto score = detections.scores[i];
+        auto box = box_from_letterbox(detections.boxes[i], _letterbox);
+
+        if (!box.has_value()) {
+            continue;
+        }
+
+        result.push_back(Detection{
+            .label = std::move(label), .score = score, .box = box.value()});
+    }
+
+    return result;
 }
 
 std::string Detector::label_by_id(std::size_t id) const {

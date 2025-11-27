@@ -47,24 +47,22 @@ int main() {
     }
 
     auto runtime =
-        // vision::make_runtime(vision::ModelType::YOLOv8,
-        // "yolov12n.onnx",
-        //                      "coco.names", 640, 640, cv::Scalar(114,
-        //                      114, 114));
-        // vision::make_runtime(vision::ModelType::YOLOv5,
-        // "yolov5s.onnx",
-        //                      "coco.names", 640, 640, cv::Scalar(114,
-        //                      114, 114));
-        vision::make_runtime(vision::ModelType::YOLOv8, "RPS-12.onnx",
-                             "RPS.names", 640, 640, cv::Scalar(114, 114, 114));
+        vision::make_runtime(vision::ModelType::YOLOv8, "yolov12n.onnx",
+                             "coco.names", 640, 640, cv::Scalar(114, 114, 114));
+    // vision::make_runtime(vision::ModelType::YOLOv5,
+    // "yolov5s.onnx",
+    //                      "coco.names", 640, 640, cv::Scalar(114,
+    //                      114, 114));
+    // vision::make_runtime(vision::ModelType::YOLOv8, "RPS-12.onnx",
+    //                      "RPS.names", 640, 640, cv::Scalar(114, 114, 114));
     auto detector = vision::Detector(std::move(runtime));
     const auto thresholds = vision::Thresholds{
         .score = SCORE_THRESH, .nms = NMS_THRESH, .objectness = OBJ_THRESH};
 
     rs2::pipeline pipe;
     rs2::config cfg;
-    cfg.enable_stream(RS2_STREAM_COLOR, 640, 480, RS2_FORMAT_BGR8, 60);
-    cfg.enable_stream(RS2_STREAM_DEPTH, 640, 480, RS2_FORMAT_Z16, 60);
+    cfg.enable_stream(RS2_STREAM_COLOR, 848, 480, RS2_FORMAT_BGR8, 60);
+    cfg.enable_stream(RS2_STREAM_DEPTH, 848, 480, RS2_FORMAT_Z16, 60);
     auto profile = pipe.start(cfg);
     const auto depth_scale = get_depth_scale(profile);
     rs2::align align_to_color(RS2_STREAM_COLOR);
@@ -81,7 +79,7 @@ int main() {
                   << "fps: " << 1000.f / duration.count() << "\n";
     };
 
-    app.create_video_stream(640, 480);
+    app.create_video_stream(848, 480);
     app.setVSync(true);
 
     rs2::frameset frames = pipe.wait_for_frames();
