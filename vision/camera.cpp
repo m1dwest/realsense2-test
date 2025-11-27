@@ -78,8 +78,6 @@ Camera::~Camera() { _pipe.stop(); }
 
 std::optional<Frames> Camera::wait_for_frames() {
     const auto frames = _pipe.wait_for_frames();
-    const auto before = std::chrono::high_resolution_clock::now();
-    // TODO measure
     const auto aligned_frames = _align_to_color.process(frames);
 
     auto color = aligned_frames.get_color_frame();
@@ -90,10 +88,6 @@ std::optional<Frames> Camera::wait_for_frames() {
     }
 
     auto depth_colorized = _colorizer.process(depth);
-    const auto after = std::chrono::high_resolution_clock::now();
-    // LOG_DEBUG << std::chrono::duration_cast<std::chrono::milliseconds>(after
-    // -
-    //                                                                    before);
 
     return Frames{std::move(color), std::move(depth),
                   std::move(depth_colorized)};
