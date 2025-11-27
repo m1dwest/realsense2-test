@@ -5,36 +5,17 @@
 #include <plog/Formatters/TxtFormatter.h>
 #include <plog/Initializers/ConsoleInitializer.h>
 #include <plog/Log.h>
-#include <librealsense2/rs.hpp>
 #include <opencv2/opencv.hpp>
 
 #include "gui/application.h"
 #include "render.h"
+#include "vision/camera.h"
 #include "vision/detector.h"
 #include "vision/factory.h"
 
 const float OBJ_THRESH = 0.25f;
 const float SCORE_THRESH = 0.35f;
 const float NMS_THRESH = 0.45f;
-
-float get_depth_scale(const rs2::pipeline_profile& profile) {
-    auto depth_scale = 0.f;
-
-    const auto sensors = profile.get_device().query_sensors();
-    for (const auto& s : sensors) {
-        if (auto ds = s.as<rs2::depth_sensor>()) {
-            depth_scale = ds.get_depth_scale();
-            break;
-        }
-    }
-
-    if (depth_scale <= 0.f) {
-        LOG_WARNING << "Failed to get depth scale; defaulting to 0.001\n";
-        depth_scale = 0.001f;
-    }
-
-    return depth_scale;
-}
 
 int main() {
     plog::init<plog::TxtFormatter>(plog::debug, plog::streamStdOut);
@@ -56,17 +37,9 @@ int main() {
     // vision::make_runtime(vision::ModelType::YOLOv8, "RPS-12.onnx",
     //                      "RPS.names", 640, 640, cv::Scalar(114, 114, 114));
     auto detector = vision::Detector(std::move(runtime));
+    auto camera = vision::Camera(848, 480, 60);
     const auto thresholds = vision::Thresholds{
         .score = SCORE_THRESH, .nms = NMS_THRESH, .objectness = OBJ_THRESH};
-
-    rs2::pipeline pipe;
-    rs2::config cfg;
-    cfg.enable_stream(RS2_STREAM_COLOR, 848, 480, RS2_FORMAT_BGR8, 60);
-    cfg.enable_stream(RS2_STREAM_DEPTH, 848, 480, RS2_FORMAT_Z16, 60);
-    auto profile = pipe.start(cfg);
-    const auto depth_scale = get_depth_scale(profile);
-    rs2::align align_to_color(RS2_STREAM_COLOR);
-    rs2::colorizer colorize;
 
     auto print_fps = [tp_before =
                           std::chrono::steady_clock::now()]() mutable -> void {
@@ -82,43 +55,28 @@ int main() {
     app.create_video_stream(848, 480);
     app.setVSync(true);
 
-    rs2::frameset frames = pipe.wait_for_frames();
-
     std::vector<vision::Detection> detections;
     detections.reserve(32);
     while (!app.should_close()) {
-        pipe.poll_for_frames(&frames);
+        const auto frames = camera.wait_for_frames();
 
-        auto aligned_frames = align_to_color.process(frames);
-        auto color = aligned_frames.get_color_frame();
-        auto depth = aligned_frames.get_depth_frame();
-        auto depth_colorized = colorize.process(depth);
-
-        if (!color || !depth) {
+        if (!frames.has_value()) {
             continue;
         }
 
-        auto color_bgr = cv::Mat(color.get_height(), color.get_width(), CV_8UC3,
-                                 (void*)color.get_data(), cv::Mat::AUTO_STEP);
-        const auto depth_z16 =
-            cv::Mat(depth.get_height(), depth.get_width(), CV_16U,
-                    (void*)depth.get_data(), cv::Mat::AUTO_STEP);
-        const auto depth_rgb =
-            cv::Mat(color.get_height(), color.get_width(), CV_8UC3,
-                    (void*)depth_colorized.get_data(), cv::Mat::AUTO_STEP);
-
         if (app.is_inference_enabled()) {
-            detector.input(color_bgr);
+            detector.input(frames->color());
             detector.forward();
             detections = detector.parse(thresholds);
         } else {
             detections.clear();
         }
 
-        static const auto surfaces =
-            std::vector<const cv::Mat*>{&color_bgr, &depth_rgb};
+        static const auto surfaces = std::vector<const cv::Mat*>{
+            &frames->color(), &frames->color_depth()};
         static std::size_t surface_index = 0;
-        render(depth_scale, detections, *surfaces[surface_index], depth_z16);
+        render(camera.depth_scale(), detections, *surfaces[surface_index],
+               frames->depth());
 
         // int k = cv::waitKey(1);
         // if (k == 27 || k == 'q') exit(0);
@@ -132,14 +90,12 @@ int main() {
         //     detector.is_nms_class_agnostic = !detector.is_nms_class_agnostic;
         // }
         // cv::cvtColor(color_bgr, color_bgr, cv::COLOR_BGR2RGB);
-        if (!color_bgr.isContinuous()) {
-            color_bgr = color_bgr.clone();
-        }
-        app.update_video_stream(color_bgr.data, depth_rgb.data);
+        app.update_video_stream(frames->color().data,
+                                frames->color_depth().data);
         if (const auto depth_picker = app.depth_picker();
             depth_picker.has_value()) {
             const auto distance =
-                depth.get_distance(depth_picker->x, depth_picker->y);
+                frames->get_distance(depth_picker->x, depth_picker->y);
             LOG_INFO << distance;
             app.update_depth_picker(distance);
         }
@@ -150,6 +106,5 @@ int main() {
         // print_fps();
     }
 
-    pipe.stop();
     return 0;
 }
