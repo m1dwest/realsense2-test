@@ -18,10 +18,6 @@ const float OBJ_THRESH = 0.25f;
 const float SCORE_THRESH = 0.35f;
 const float NMS_THRESH = 0.45f;
 
-auto wait_for_frames(vision::Camera& camera) {
-    return camera.wait_for_frames();
-}
-
 int main() {
     plog::init<plog::TxtFormatter>(plog::debug, plog::streamStdOut);
 
@@ -63,12 +59,13 @@ int main() {
     std::vector<vision::Detection> detections;
     detections.reserve(32);
 
-    auto frames_fut =
-        std::async(std::launch::async, wait_for_frames, std::ref(camera));
+    const auto wait_for_frames = [&camera] { return camera.wait_for_frames(); };
+
+    auto frames_fut = std::async(std::launch::async, wait_for_frames);
     while (!app.should_close()) {
         auto frames = frames_fut.get();
-        frames_fut =
-            std::async(std::launch::async, wait_for_frames, std::ref(camera));
+        frames_fut = std::async(std::launch::async, wait_for_frames);
+
         if (!frames.has_value()) {
             continue;
         }
