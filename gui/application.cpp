@@ -242,8 +242,6 @@ GLuint create_texture(int width, int height) {
 
 namespace gui {
 
-Application::Application() { _streams = {"color", "depth"}; }
-
 Application::~Application() {
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
@@ -296,18 +294,46 @@ void Application::create_video_stream(int width, int height) {
 }
 
 void Application::update_video_stream(unsigned char* color_bgr,
-                                      unsigned char* depth_rgb) const {
+                                      unsigned char* depth_rgb,
+                                      unsigned char* ir_y8) const {
     glBindTexture(GL_TEXTURE_2D, _video_stream->texture);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
     unsigned char* current_data;
     GLenum current_format;
-    if (_current_stream_index == 0) {
-        current_data = color_bgr;
-        current_format = GL_BGR;
-    } else {
-        current_data = depth_rgb;
-        current_format = GL_RGB;
+
+    switch (_current_stream) {
+        case Stream::Color:
+            if (color_bgr == nullptr) {
+                LOG_ERROR
+                    << "No color BGR data provided (passing nullptr to the "
+                       "glTexSubImage2D)";
+            }
+            current_data = color_bgr;
+            current_format = GL_BGR;
+            break;
+        case Stream::Depth:
+            if (color_bgr == nullptr) {
+                LOG_ERROR
+                    << "No depth RGB data provided (passing nullptr to the "
+                       "glTexSubImage2D)";
+            }
+            current_data = depth_rgb;
+            current_format = GL_RGB;
+            break;
+        case Stream::IR:
+            if (color_bgr == nullptr) {
+                LOG_ERROR << "No infrared grayscale data provided (passing "
+                             "nullptr to the "
+                             "glTexSubImage2D)";
+            }
+            current_data = ir_y8;
+            current_format = GL_RED;
+            break;
+        case Stream::MAX:
+            assert(false && "Invalid enum value Application::Stream::MAX used");
+        default:
+            assert(false && "Unknown enum value of Application::Stream");
     }
 
     glTexSubImage2D(GL_TEXTURE_2D,
@@ -368,8 +394,8 @@ void Application::compose_frame() {
         ImVec2 imgSize(static_cast<float>(_video_stream->width),
                        static_cast<float>(_video_stream->height));
 
-        // Many OpenGL backends expect ImTextureID to be the GLuint cast like
-        // this:
+        // Many OpenGL backends expect ImTextureID to be the GLuint cast
+        // like this:
         ImTextureID texId = (ImTextureID)(intptr_t)_video_stream->texture;
         ImVec2 uv0(0.0f, 0.0f);
         ImVec2 uv1(1.0f, 1.0f);
@@ -404,11 +430,15 @@ void Application::compose_frame() {
     ImGui::End();
 
     if (ImGui::Begin("Control")) {
-        if (ImGui::BeginCombo("Stream", _streams[_current_stream_index])) {
-            for (int n = 0; n < _streams.size(); ++n) {
-                const bool is_selected = (_current_stream_index == n);
-                if (ImGui::Selectable(_streams[n], is_selected)) {
-                    _current_stream_index = n;
+        assert(!_stream_map.empty());
+        if (ImGui::BeginCombo("Stream", enum_stream_to_cstr(_current_stream))) {
+            for (auto it = _stream_map.begin();
+                 it != std::prev(_stream_map.end()); ++it) {
+                const auto& [stream, stream_name] = *it;
+
+                const bool is_selected = _current_stream == stream;
+                if (ImGui::Selectable(stream_name.c_str(), is_selected)) {
+                    _current_stream = stream;
                 }
 
                 if (is_selected) {
@@ -444,6 +474,11 @@ void Application::input() const { glfwPollEvents(); }
 void Application::setVSync(bool flag) {
     _is_vsync_enabled = flag;
     glfwSwapInterval(static_cast<int>(flag));
+}
+
+const char* Application::enum_stream_to_cstr(Stream stream) const {
+    assert(stream < map.size());
+    return _stream_map.at(stream).c_str();
 }
 
 }  // namespace gui

@@ -69,6 +69,8 @@ Camera::Camera(int width, int height, int fps)
     rs2::config cfg;
     cfg.enable_stream(RS2_STREAM_COLOR, width, height, RS2_FORMAT_BGR8, fps);
     cfg.enable_stream(RS2_STREAM_DEPTH, width, height, RS2_FORMAT_Z16, fps);
+    // cfg.enable_stream(RS2_STREAM_INFRARED, 1, width, height, RS2_FORMAT_Y8,
+    //                   fps);
     auto profile = _pipe.start(cfg);
 
     _depth_scale = get_depth_scale(profile);
