@@ -7,23 +7,26 @@ namespace vision {
 
 class Frames {
    public:
-    Frames(rs2::video_frame color, rs2::depth_frame depth,
-           rs2::video_frame depth_colorized);
+    Frames(rs2::video_frame color_bgr, rs2::depth_frame depth_z16,
+           rs2::video_frame depth_rgb, rs2::video_frame ir_y8);
 
     const cv::Mat& color() const;
     const cv::Mat& color_depth() const;
     const cv::Mat& depth() const;
+    const cv::Mat& ir() const;
 
     float get_distance(int x, int y) const;
 
    private:
-    rs2::video_frame _color;
-    rs2::depth_frame _depth;
-    rs2::video_frame _depth_colorized;
+    rs2::video_frame _color_frame;
+    rs2::depth_frame _depth_frame;
+    rs2::video_frame _depth_color_frame;
+    rs2::video_frame _ir_frame;
 
     cv::Mat _color_bgr;
     cv::Mat _depth_z16;
     cv::Mat _depth_rgb;
+    cv::Mat _ir_y8;
 };
 
 class Camera {

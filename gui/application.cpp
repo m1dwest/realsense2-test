@@ -328,7 +328,7 @@ void Application::update_video_stream(unsigned char* color_bgr,
                              "glTexSubImage2D)";
             }
             current_data = ir_y8;
-            current_format = GL_RED;
+            current_format = GL_RGB;
             break;
         case Stream::MAX:
             assert(false && "Invalid enum value Application::Stream::MAX used");

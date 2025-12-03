@@ -97,7 +97,7 @@ int main() {
         // }
         // cv::cvtColor(color_bgr, color_bgr, cv::COLOR_BGR2RGB);
         app.update_video_stream(frames->color().data,
-                                frames->color_depth().data, nullptr);
+                                frames->color_depth().data, frames->ir().data);
         if (const auto depth_picker = app.depth_picker();
             depth_picker.has_value()) {
             const auto distance =
