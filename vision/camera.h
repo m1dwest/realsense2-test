@@ -37,8 +37,16 @@ class Camera {
     std::optional<Frames> wait_for_frames();
     float depth_scale() const;
 
+    std::optional<float> get_exposure() const;
+    void set_exposure(float exposure);
+
+    std::optional<float> get_option(rs2_option) const;
+    void set_option(rs2_option, float);
+
    private:
     rs2::pipeline _pipe;
+    rs2::pipeline_profile _profile;
+    std::optional<rs2::depth_sensor> _depth_sensor;
     rs2::align _align_to_color;
     rs2::colorizer _colorizer;
     float _depth_scale = 0.01f;

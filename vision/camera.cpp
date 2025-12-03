@@ -6,23 +6,24 @@
 
 namespace {
 
-float get_depth_scale(const rs2::pipeline_profile& profile) {
-    auto depth_scale = 0.f;
-
-    const auto sensors = profile.get_device().query_sensors();
-    for (const auto& s : sensors) {
-        if (auto ds = s.as<rs2::depth_sensor>()) {
-            depth_scale = ds.get_depth_scale();
-            break;
-        }
-    }
-
-    if (depth_scale <= 0.f) {
+float get_depth_scale(const std::optional<rs2::depth_sensor>& sensor) {
+    if (sensor.has_value()) {
+        return sensor.value().get_depth_scale();
+    } else {
         LOG_WARNING << "Failed to get depth scale; defaulting to 0.001\n";
-        depth_scale = 0.001f;
+        return 0.001;
     }
+}
 
-    return depth_scale;
+template <typename T>
+std::optional<T> get_sensor(const rs2::pipeline_profile& profile) {
+    try {
+        return profile.get_device().first<T>();
+    } catch (rs2::error) {
+        LOG_WARNING << "Failed to get sensor typeid:"
+                    << std::string{typeid(T).name()};
+        return std::nullopt;
+    }
 }
 
 inline cv::Mat frame_to_mat(auto frame, int type) {
@@ -101,9 +102,9 @@ Camera::Camera(int width, int height, int fps)
     cfg.enable_stream(RS2_STREAM_DEPTH, width, height, RS2_FORMAT_Z16, fps);
     cfg.enable_stream(RS2_STREAM_INFRARED, 1, width, height, RS2_FORMAT_Y8,
                       fps);
-    auto profile = _pipe.start(cfg);
-
-    _depth_scale = get_depth_scale(profile);
+    _profile = _pipe.start(cfg);
+    _depth_sensor = get_sensor<rs2::depth_sensor>(_profile);
+    _depth_scale = get_depth_scale(_depth_sensor);
 }
 
 Camera::~Camera() { _pipe.stop(); }
@@ -127,5 +128,48 @@ std::optional<Frames> Camera::wait_for_frames() {
 }
 
 float Camera::depth_scale() const { return _depth_scale; }
+
+std::optional<float> Camera::get_exposure() const {
+    return get_option(RS2_OPTION_EXPOSURE);
+}
+
+void Camera::set_exposure(float exposure) {
+    set_option(RS2_OPTION_EXPOSURE, exposure);
+}
+
+std::optional<float> Camera::get_option(rs2_option option) const {
+    if (_depth_sensor.has_value()) {
+        try {
+            return _depth_sensor.value().get_option(option);
+        } catch (const rs2::error& e) {
+            LOG_ERROR << "Failed to get" +
+                             std::string{rs2_option_to_string(option)} + ": " +
+                             e.what();
+            return std::nullopt;
+        }
+    } else {
+        LOG_ERROR << "Failed to get" +
+                         std::string{rs2_option_to_string(option)} +
+                         ". No valid depth sensor was found";
+        return std::nullopt;
+    }
+}
+
+void Camera::set_option(rs2_option option, float value) {
+    if (_depth_sensor.has_value()) {
+        try {
+            _depth_sensor.value().set_option(option, value);
+        } catch (const rs2::error& e) {
+            LOG_ERROR << "Failed to set" +
+                             std::string{rs2_option_to_string(option)} + ": " +
+                             e.what();
+            return;
+        }
+    } else {
+        LOG_ERROR << "Failed to set" +
+                         std::string{rs2_option_to_string(option)} +
+                         " . No valid depth sensor was found";
+    }
+}
 
 }  // namespace vision
